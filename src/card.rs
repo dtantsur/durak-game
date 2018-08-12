@@ -61,6 +61,13 @@ pub struct Deck {
 
 const DECK_SIZE: usize = 36;
 
+#[derive(Debug)]
+pub struct Hand {
+    pub cards: Vec<Card>,
+}
+
+const HAND_SIZE: usize = 6;
+
 
 impl Card {
     pub fn beats(&self, other: &Card, trump: Suit) -> bool {
@@ -101,5 +108,27 @@ impl Deck {
 
     pub fn draw(&mut self) -> Card {
         self.cards.pop().expect("No cards to draw")
+    }
+}
+
+impl Hand {
+    pub fn new(deck: &mut Deck) -> Hand {
+        let mut hand = Hand {
+            cards: Vec::with_capacity(HAND_SIZE)
+        };
+        hand.draw_from(deck);
+        hand
+    }
+
+    pub fn draw_from(&mut self, deck: &mut Deck) {
+        while self.cards.len() < HAND_SIZE {
+            if deck.cards.is_empty() {
+                break
+            }
+
+            self.cards.push(deck.draw());
+        }
+
+        self.cards.sort_unstable();
     }
 }
