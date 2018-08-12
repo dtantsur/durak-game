@@ -15,6 +15,7 @@ use termion::{clear, cursor};
 use termion::event::{Event, Key};
 use termion::input::{self, TermRead};
 
+use super::card::Deck;
 use super::game::Game;
 
 
@@ -63,6 +64,23 @@ impl<R: io::Read, W: io::Write> Ui<R, W> {
 
 impl fmt::Display for Game {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "<placeholder>")
+        write!(f, "{}", self.deck)?;
+        write!(f, "{}Computer has {} cards",
+               cursor::Goto(START.0, START.1 + 1),
+               self.computer.len())?;
+        write!(f, "{}Your cards: {:?}",
+               cursor::Goto(START.0, START.1 + 2),
+               self.player)
+    }
+}
+
+impl fmt::Display for Deck {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if let Some(ref trump_card) = self.trump_card() {
+            write!(f, "Deck: Remaining = {}, Trump = {:?}",
+                   self.cards.len(), trump_card)
+        } else {
+            write!(f, "No cards in the deck, time to win!")
+        }
     }
 }

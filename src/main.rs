@@ -16,7 +16,7 @@
 // versions of the compiler. Add more warnings here as you discover them.
 // Taken from https://github.com/rust-unofficial/patterns/
 #![deny(const_err,
-        dead_code,
+        // dead_code,
         improper_ctypes,
         legacy_directory_ownership,
         missing_copy_implementations,
@@ -36,7 +36,7 @@
         unconditional_recursion,
         unions_with_drop_fields,
         unsafe_code,
-        unused,
+        // unused,
         unused_allocation,
         unused_comparisons,
         unused_doc_comments,
@@ -47,8 +47,10 @@
         unused_results,
         while_true)]
 
+extern crate rand;
 extern crate termion;
 
+mod card;
 mod game;
 mod ui;
 
