@@ -8,6 +8,9 @@
 
 //! Card definition.
 
+use std::collections::HashSet;
+use std::mem;
+
 use rand;
 
 
@@ -63,10 +66,12 @@ const DECK_SIZE: usize = 36;
 
 #[derive(Debug)]
 pub struct Hand {
-    pub cards: Vec<Card>,
+    pub cards: HashSet<Card>,
 }
 
-const HAND_SIZE: usize = 6;
+pub const HAND_SIZE: usize = 6;
+
+pub type Table = Vec<(Card, Option<Card>)>;
 
 
 impl Card {
@@ -114,10 +119,23 @@ impl Deck {
 impl Hand {
     pub fn new(deck: &mut Deck) -> Hand {
         let mut hand = Hand {
-            cards: Vec::with_capacity(HAND_SIZE)
+            cards: HashSet::with_capacity(HAND_SIZE)
         };
         hand.draw_from(deck);
         hand
+    }
+
+    pub fn attack_with(&mut self, card: Card, table: &mut Table) {
+        assert!(table.len() < HAND_SIZE);
+        self.play(&card);
+        table.push((card, None));
+    }
+
+    pub fn defend_with(&mut self, card: Card, table: &mut Table) {
+        let last = table.pop().expect("Table is empty when defending");
+        assert!(last.1.is_none());
+        self.play(&card);
+        table.push((last.0, Some(card)));
     }
 
     pub fn draw_from(&mut self, deck: &mut Deck) {
@@ -126,9 +144,24 @@ impl Hand {
                 break
             }
 
-            self.cards.push(deck.draw());
+            let _ = self.cards.insert(deck.draw());
         }
+    }
 
-        self.cards.sort_unstable();
+    pub fn take_from(&mut self, table: &mut Table) {
+        let mut new = Vec::with_capacity(HAND_SIZE);
+        mem::swap(&mut new, table);
+        for (ac, dc) in new.into_iter() {
+            let _ = self.cards.insert(ac);
+            if let Some(c) = dc {
+                let _ = self.cards.insert(c);
+            }
+        }
+    }
+
+    #[inline]
+    fn play(&mut self, card: &Card) {
+        let res = self.cards.remove(card);
+        assert!(res);
     }
 }

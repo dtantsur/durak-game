@@ -50,6 +50,7 @@
 extern crate rand;
 extern crate termion;
 
+mod ai;
 mod card;
 mod game;
 mod ui;
