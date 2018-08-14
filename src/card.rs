@@ -8,6 +8,7 @@
 
 //! Card definition.
 
+use std::borrow::Cow;
 use std::collections::HashSet;
 use std::mem;
 
@@ -123,6 +124,41 @@ impl Hand {
         };
         hand.draw_from(deck);
         hand
+    }
+
+    pub fn acceptable_moves<'a>(&'a self, table: &Table, trump: Suit)
+            -> Cow<'a, HashSet<Card>> {
+        if let Some(ref last) = table.last() {
+            if let Some(ref attack) = last.1 {
+                // Possible defense
+                Cow::Owned(self.cards.iter().filter_map(|c| {
+                    if c.beats(attack, trump) {
+                        Some(*c)
+                    } else {
+                        None
+                    }
+                }).collect())
+            } else {
+                // Continued attack, only played cards can be used.
+                let mut result = HashSet::new();
+                for (ca, cd) in table.iter() {
+                    if self.cards.contains(ca) {
+                        let _ = result.insert(*ca);
+                    }
+
+                    if let Some(c) = cd {
+                        if self.cards.contains(c) {
+                            let _ = result.insert(*c);
+                        }
+                    }
+                }
+
+                Cow::Owned(result)
+            }
+        } else {
+            // New attack, any card can be used.
+            Cow::Borrowed(&self.cards)
+        }
     }
 
     pub fn attack_with(&mut self, card: Card, table: &mut Table) {

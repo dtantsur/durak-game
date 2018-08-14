@@ -12,8 +12,9 @@ use super::card::Card;
 use super::game::Game;
 
 
-pub fn plan_attack(game: &mut Game) -> Card {
-    *game.computer.cards.iter().next().unwrap()  // TODO
+pub fn plan_attack(game: &mut Game) -> Option<Card> {
+    game.computer.acceptable_moves(&game.table, game.deck.trump)
+        .iter().next().map(|c| *c)
 }
 
 pub fn plan_defense(game: &mut Game, attack: Card) -> Option<Card> {

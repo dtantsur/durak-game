@@ -151,7 +151,8 @@ impl Game {
         self.discard_table();
 
         // Start an attack.
-        let attack = ai::plan_attack(self);
+        let attack = ai::plan_attack(self)
+            .expect("Attack impossible on first move");
         self.computer.attack_with(attack, &mut self.table);
         Response::Play(attack)
     }
@@ -179,9 +180,15 @@ impl Game {
             if let Some(winner) = self.winner() {
                 Response::GameOver(winner)
             } else {
-                let attack = ai::plan_attack(self);
-                self.computer.attack_with(attack, &mut self.table);
-                Response::Play(attack)
+                if let Some(attack) = ai::plan_attack(self) {
+                    self.computer.attack_with(attack, &mut self.table);
+                    Response::Play(attack)
+                } else {
+                    // No more cards to attack with, yielding.
+                    self.players_turn = true;
+                    self.discard_table();
+                    Response::EndTurn
+                }
             }
         }
     }
@@ -197,7 +204,8 @@ impl Game {
         if let Some(winner) = self.winner() {
             return Response::GameOver(winner);
         } else {
-            let attack = ai::plan_attack(self);
+            let attack = ai::plan_attack(self)
+                .expect("Attack impossible on first move");
             self.computer.attack_with(attack, &mut self.table);
             Response::Play(attack)
         }
