@@ -8,12 +8,10 @@
 
 //! Game structure.
 
-use std::mem;
-
 use rand::{self, Rng};
 
 use super::ai;
-use super::card::{Card, Deck, Hand, HAND_SIZE, Table};
+use super::card::{Card, Deck, Hand, Table};
 
 #[derive(Debug)]
 pub struct Game {
@@ -64,7 +62,13 @@ impl Game {
             player: player,
             computer: computer,
             players_turn: rng.gen_bool(0.5),
-            table: Vec::with_capacity(HAND_SIZE),
+            table: Table::new(),
+        }
+    }
+
+    pub fn start(&mut self) {
+        if !self.players_turn {
+            let _ = self.start_attack();
         }
     }
 
@@ -82,10 +86,11 @@ impl Game {
         }
     }
 
-    pub fn player_can_attack(&self) -> bool {
-        self.players_turn &&
-            self.table.len() < HAND_SIZE &&
-            !self.computer.cards.is_empty()
+    pub fn is_valid_move(&self, card: &Card) -> bool {
+        if self.players_turn && (self.table.is_full() || self.computer.cards.is_empty()) {
+            return false;
+        }
+        self.player.acceptable_moves(&self.table, self.deck.trump).contains(card)
     }
 
     pub fn winner(&self) -> Option<Winner> {
@@ -106,11 +111,20 @@ impl Game {
         }
     }
 
+    /// Start computer attack.
+    fn start_attack(&mut self) -> Response {
+        let attack = ai::plan_attack(self)
+            .expect("Attack impossible on first move");
+        self.computer.attack_with(attack, &mut self.table);
+        Response::Play(attack)
+    }
+
     /// Player attacks us with the provided card, defend.
     fn defend(&mut self, attack: Card) -> Response {
         assert!(self.players_turn);
-        assert!(self.table.len() < HAND_SIZE);
+        assert!(!self.table.is_full());
 
+        self.player.attack_with(attack, &mut self.table);
         let response = match ai::plan_defense(self, attack) {
             Some(response) => {
                 self.computer.defend_with(response, &mut self.table);
@@ -120,7 +134,8 @@ impl Game {
                 self.computer.take_from(&mut self.table);
                 // Is this ever needed? At least it won't hurt.
                 self.computer.draw_from(&mut self.deck);
-                Response::EndTurn
+                self.player.draw_from(&mut self.deck);
+                Response::Take
             }
         };
 
@@ -150,19 +165,16 @@ impl Game {
         self.players_turn = false;
         self.discard_table();
 
-        // Start an attack.
-        let attack = ai::plan_attack(self)
-            .expect("Attack impossible on first move");
-        self.computer.attack_with(attack, &mut self.table);
-        Response::Play(attack)
+        self.start_attack()
     }
 
     /// Player defended, plan another attack.
     fn plan_attack(&mut self, last_defense: Card) -> Response {
         assert!(!self.players_turn);
 
+        self.player.defend_with(last_defense, &mut self.table);
         // Check if attacking is possible, end turn if not.
-        if self.table.len() == HAND_SIZE {
+        if self.table.is_full() {
             // Order matters here - attacker goes first.
             self.computer.draw_from(&mut self.deck);
             self.player.draw_from(&mut self.deck);
@@ -187,6 +199,9 @@ impl Game {
                     // No more cards to attack with, yielding.
                     self.players_turn = true;
                     self.discard_table();
+                    // Order matters here - attacker goes first.
+                    self.computer.draw_from(&mut self.deck);
+                    self.player.draw_from(&mut self.deck);
                     Response::EndTurn
                 }
             }
@@ -204,17 +219,12 @@ impl Game {
         if let Some(winner) = self.winner() {
             return Response::GameOver(winner);
         } else {
-            let attack = ai::plan_attack(self)
-                .expect("Attack impossible on first move");
-            self.computer.attack_with(attack, &mut self.table);
-            Response::Play(attack)
+            self.start_attack()
         }
     }
 
     fn discard_table(&mut self) {
-        let mut new = Vec::with_capacity(HAND_SIZE);
-        mem::swap(&mut new, &mut self.table);
-        for (ac, dc) in new.into_iter() {
+        for (ac, dc) in self.table.cards.drain(..) {
             self.discard.push(ac);
             if let Some(c) = dc {
                 self.discard.push(c);

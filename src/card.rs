@@ -10,7 +10,6 @@
 
 use std::cmp::Ordering;
 use std::collections::HashSet;
-use std::mem;
 
 use rand;
 
@@ -65,19 +64,26 @@ pub struct Deck {
 
 const DECK_SIZE: usize = 36;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Hand {
-    pub cards: HashSet<Card>,
+    pub cards: Vec<Card>,
 }
 
 pub const HAND_SIZE: usize = 6;
 
-pub type Table = Vec<(Card, Option<Card>)>;
+#[derive(Debug, Clone)]
+pub struct Table {
+    pub cards: Vec<(Card, Option<Card>)>,
+}
 
 
 impl Card {
     pub fn beats(&self, other: &Card, trump: Suit) -> bool {
-        self.compare(other, trump) == Ordering::Greater
+        if self.suit == other.suit {
+            self.value > other.value
+        } else {
+            self.suit == trump
+        }
     }
 
     pub fn compare(&self, other: &Card, trump: Suit) -> Ordering {
@@ -85,8 +91,10 @@ impl Card {
             self.value.cmp(&other.value)
         } else if self.suit == trump {
             Ordering::Greater
-        } else {
+        } else if other.suit == trump {
             Ordering::Less
+        } else {
+            self.value.cmp(&other.value)
         }
     }
 }
@@ -126,56 +134,43 @@ impl Deck {
 impl Hand {
     pub fn new(deck: &mut Deck) -> Hand {
         let mut hand = Hand {
-            cards: HashSet::with_capacity(HAND_SIZE)
+            cards: Vec::with_capacity(HAND_SIZE)
         };
         hand.draw_from(deck);
         hand
     }
 
     pub fn acceptable_moves(&self, table: &Table, trump: Suit) -> Vec<Card> {
-        let mut result = Vec::new();
-        if let Some(ref last) = table.last() {
-            if let Some(ref attack) = last.1 {
-                // Possible defense
-                for card in self.cards.iter() {
-                    if card.beats(attack, trump) {
-                        result.push(*card);
-                    }
-                }
+        let mut result = if let Some(ref last) = table.cards.last() {
+            if last.1.is_some() {
+                // Continued attack, only played values can be used.
+                let existing = table.values();
+                self.cards.iter().filter(|c| existing.contains(&c.value))
+                    .cloned().collect()
             } else {
-                // Continued attack, only played cards can be used.
-                for (ca, cd) in table.iter() {
-                    if self.cards.contains(ca) {
-                        let _ = result.push(*ca);
-                    }
-
-                    if let Some(c) = cd {
-                        if self.cards.contains(c) {
-                            let _ = result.push(*c);
-                        }
-                    }
-                }
+                // Possible defense
+                self.cards.iter().filter(|c| c.beats(&last.0, trump))
+                    .cloned().collect()
             }
         } else {
             // New attack, any card can be used.
-            result.reserve_exact(self.cards.len());
-            result.extend(&self.cards);
+            self.cards.clone()
         };
         result.sort_unstable_by(|c1, c2| c1.compare(c2, trump));
         result
     }
 
     pub fn attack_with(&mut self, card: Card, table: &mut Table) {
-        assert!(table.len() < HAND_SIZE);
-        self.play(&card);
-        table.push((card, None));
+        assert!(table.cards.len() < HAND_SIZE);
+        self.remove(&card);
+        table.cards.push((card, None));
     }
 
     pub fn defend_with(&mut self, card: Card, table: &mut Table) {
-        let last = table.pop().expect("Table is empty when defending");
+        let last = table.cards.pop().expect("Table is empty when defending");
         assert!(last.1.is_none());
-        self.play(&card);
-        table.push((last.0, Some(card)));
+        self.remove(&card);
+        table.cards.push((last.0, Some(card)));
     }
 
     pub fn draw_from(&mut self, deck: &mut Deck) {
@@ -184,24 +179,46 @@ impl Hand {
                 break
             }
 
-            let _ = self.cards.insert(deck.draw());
+            let _ = self.cards.push(deck.draw());
         }
+        self.cards.sort_unstable();
     }
 
     pub fn take_from(&mut self, table: &mut Table) {
-        let mut new = Vec::with_capacity(HAND_SIZE);
-        mem::swap(&mut new, table);
-        for (ac, dc) in new.into_iter() {
-            let _ = self.cards.insert(ac);
+        for (ac, dc) in table.cards.drain(..) {
+            let _ = self.cards.push(ac);
             if let Some(c) = dc {
-                let _ = self.cards.insert(c);
+                let _ = self.cards.push(c);
             }
         }
+        self.cards.sort_unstable();
     }
 
     #[inline]
-    fn play(&mut self, card: &Card) {
-        let res = self.cards.remove(card);
-        assert!(res);
+    fn remove(&mut self, card: &Card) {
+        self.cards.retain(|c| c != card);
+    }
+}
+
+impl Table {
+    pub fn new() -> Table {
+        Table {
+            cards: Vec::with_capacity(HAND_SIZE)
+        }
+    }
+
+    pub fn is_full(&self) -> bool {
+        self.cards.len() >= HAND_SIZE
+    }
+
+    pub fn values(&self) -> HashSet<Value> {
+        let mut result = HashSet::with_capacity(self.cards.len() * 2);
+        for (ca, cd) in self.cards.iter() {
+            let _ = result.insert(ca.value);
+            if let Some(c) = cd {
+                let _ = result.insert(c.value);
+            }
+        }
+        result
     }
 }
