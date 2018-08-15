@@ -8,7 +8,7 @@
 
 //! Card definition.
 
-use std::borrow::Cow;
+use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::mem;
 
@@ -77,10 +77,16 @@ pub type Table = Vec<(Card, Option<Card>)>;
 
 impl Card {
     pub fn beats(&self, other: &Card, trump: Suit) -> bool {
+        self.compare(other, trump) == Ordering::Greater
+    }
+
+    pub fn compare(&self, other: &Card, trump: Suit) -> Ordering {
         if self.suit == other.suit {
-            self.value > other.value
+            self.value.cmp(&other.value)
+        } else if self.suit == trump {
+            Ordering::Greater
         } else {
-            self.suit == trump
+            Ordering::Less
         }
     }
 }
@@ -126,39 +132,37 @@ impl Hand {
         hand
     }
 
-    pub fn acceptable_moves<'a>(&'a self, table: &Table, trump: Suit)
-            -> Cow<'a, HashSet<Card>> {
+    pub fn acceptable_moves(&self, table: &Table, trump: Suit) -> Vec<Card> {
+        let mut result = Vec::new();
         if let Some(ref last) = table.last() {
             if let Some(ref attack) = last.1 {
                 // Possible defense
-                Cow::Owned(self.cards.iter().filter_map(|c| {
-                    if c.beats(attack, trump) {
-                        Some(*c)
-                    } else {
-                        None
+                for card in self.cards.iter() {
+                    if card.beats(attack, trump) {
+                        result.push(*card);
                     }
-                }).collect())
+                }
             } else {
                 // Continued attack, only played cards can be used.
-                let mut result = HashSet::new();
                 for (ca, cd) in table.iter() {
                     if self.cards.contains(ca) {
-                        let _ = result.insert(*ca);
+                        let _ = result.push(*ca);
                     }
 
                     if let Some(c) = cd {
                         if self.cards.contains(c) {
-                            let _ = result.insert(*c);
+                            let _ = result.push(*c);
                         }
                     }
                 }
-
-                Cow::Owned(result)
             }
         } else {
             // New attack, any card can be used.
-            Cow::Borrowed(&self.cards)
-        }
+            result.reserve_exact(self.cards.len());
+            result.extend(&self.cards);
+        };
+        result.sort_unstable_by(|c1, c2| c1.compare(c2, trump));
+        result
     }
 
     pub fn attack_with(&mut self, card: Card, table: &mut Table) {

@@ -14,9 +14,10 @@ use super::game::Game;
 
 pub fn plan_attack(game: &mut Game) -> Option<Card> {
     game.computer.acceptable_moves(&game.table, game.deck.trump)
-        .iter().next().map(|c| *c)
+        .into_iter().next()
 }
 
 pub fn plan_defense(game: &mut Game, attack: Card) -> Option<Card> {
-    None  // TODO
+    game.computer.acceptable_moves(&game.table, game.deck.trump)
+        .into_iter().next()
 }
