@@ -16,7 +16,7 @@ use termion::event::{Event, Key};
 use termion::input::{self, TermRead};
 
 use super::card::{Card, Deck, Hand, Suit, Table, Value};
-use super::game::{Action, Game};
+use super::game::{Action, Game, Winner};
 
 
 pub struct Ui<R, W: io::Write> {
@@ -141,7 +141,9 @@ impl<W: io::Write> Draw<W> for Game {
         write!(out, "{}",
                cursor::Goto(START.0, 5 * CARD_HEIGHT + 5))?;
 
-        if self.players_turn {
+        if let Some(winner) = self.winner() {
+            write!(out, "{}", winner)
+        } else if self.players_turn {
             write!(out, "Play a card or skip turn with space")
         } else {
             write!(out, "Defend with a card or take cards with t")
@@ -221,7 +223,6 @@ impl fmt::Display for Suit {
     }
 }
 
-
 impl<W: io::Write> Draw<W> for Card {
     fn draw(&self, out: &mut input::MouseTerminal<W>, pos: cursor::Goto) -> io::Result<()> {
         write!(out, "{}╔═════╗{}{}",
@@ -242,5 +243,16 @@ impl<W: io::Write> Draw<W> for Card {
                cursor::Left(CARD_WIDTH))?;
         write!(out, "╚═════╝{}",
                cursor::Up(CARD_HEIGHT - 1))
+    }
+}
+
+impl fmt::Display for Winner {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let s = match *self {
+            Winner::Player => "You have won, congratulations!",
+            Winner::Computer => "Unfortunately, you have lost the game..",
+            Winner::Tie => "It's a tie, let's have a drink :)",
+        };
+        write!(f, "{}", s)
     }
 }
