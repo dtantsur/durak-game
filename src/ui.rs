@@ -25,6 +25,11 @@ pub struct Ui<R, W: io::Write> {
     stdout: input::MouseTerminal<W>,
 }
 
+trait Draw<W: io::Write> {
+    fn draw(&self, out: &mut input::MouseTerminal<W>, pos: cursor::Goto)
+        -> io::Result<()>;
+}
+
 
 const START: cursor::Goto = cursor::Goto(1, 2);
 
@@ -56,8 +61,9 @@ impl<R: io::Read, W: io::Write> Ui<R, W> {
     }
 
     fn draw(&mut self) -> Result<(), io::Error> {
-        write!(self.stdout, "{}{}Durak game, press q to exit{}{}",
-               clear::All, cursor::Goto(1, 1), START, self.game)?;
+        write!(self.stdout, "{}{}Durak game, press q to exit{}",
+               clear::All, cursor::Goto(1, 1), START)?;
+        self.game.draw(&mut self.stdout, START)?;
         self.stdout.flush()?;
 
         Ok(())
@@ -95,7 +101,8 @@ const SEPARATOR: &'static str =
 const CARD_WIDTH: u16 = 7;
 const CARD_HEIGHT: u16 = 5;
 
-fn empty_card<S: fmt::Display>(f: &mut fmt::Formatter, symbol: S) -> fmt::Result {
+fn empty_card<W: io::Write, S: fmt::Display>(f: &mut input::MouseTerminal<W>, symbol: S)
+        -> io::Result<()> {
     write!(f, "╔═════╗{}{}",
            cursor::Down(1),
            cursor::Left(CARD_WIDTH))?;
@@ -113,63 +120,75 @@ fn empty_card<S: fmt::Display>(f: &mut fmt::Formatter, symbol: S) -> fmt::Result
            cursor::Up(CARD_HEIGHT - 1))
 }
 
-impl fmt::Display for Game {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}{}",
-               self.deck,
-               cursor::Goto(START.0 + 40, START.1))?;
-        empty_card(f, self.discard.len())?;
-        write!(f, "{}Computer:{}",
+impl<W: io::Write> Draw<W> for Game {
+    fn draw(&self, out: &mut input::MouseTerminal<W>, pos: cursor::Goto) -> io::Result<()> {
+        self.deck.draw(out, pos)?;
+        write!(out, "{}", cursor::Goto(START.0 + 40, START.1))?;
+        empty_card(out, self.discard.len())?;
+        write!(out, "{}Computer:{}",
                cursor::Goto(START.0, START.1 + CARD_HEIGHT),
                cursor::Goto(START.0, START.1 + CARD_HEIGHT + 1))?;
         for _ in 0 .. self.computer.cards.len() {
-            empty_card(f, "?")?;
-            write!(f, " ")?;
+            empty_card(out, "?")?;
+            write!(out, " ")?;
         }
-        write!(f, "{}{}{}{}{}",
-               cursor::Goto(START.0, START.1 + 2 * CARD_HEIGHT + 1),
-               SEPARATOR,
-               self.table,
-               cursor::Goto(START.0, START.1 + 4 * CARD_HEIGHT + 1),
-               SEPARATOR)?;
-        write!(f, "{}Your cards: {}{}{}",
-               cursor::Goto(START.0, START.1 + 4 * CARD_HEIGHT + 2),
-               cursor::Goto(START.0, START.1 + 4 * CARD_HEIGHT + 3),
-               self.player,
+        self.table.draw(out,
+                        cursor::Goto(START.0, START.1 + 2 * CARD_HEIGHT + 1))?;
+        write!(out, "{}Your cards: ",
+               cursor::Goto(START.0, START.1 + 4 * CARD_HEIGHT + 2))?;
+        self.player.draw(out,
+                         cursor::Goto(START.0, START.1 + 4 * CARD_HEIGHT + 3))?;
+        write!(out, "{}",
                cursor::Goto(START.0, 5 * CARD_HEIGHT + 5))?;
 
         if self.players_turn {
-            write!(f, "Play a card or skip turn with space")
+            write!(out, "Play a card or skip turn with space")
         } else {
-            write!(f, "Defend with a card or take cards with t")
+            write!(out, "Defend with a card or take cards with t")
         }
     }
 }
 
-impl fmt::Display for Table {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let table_start = START.1 + 2 * CARD_HEIGHT + 2;
-        let mut card_offset = START.0;
+
+impl<W: io::Write> Draw<W> for Table {
+    fn draw(&self, out: &mut input::MouseTerminal<W>, pos: cursor::Goto) -> io::Result<()> {
+        write!(out, "{}{}", pos, SEPARATOR)?;
+        let mut card_offset = pos.0;
+        let attack_start = pos.1 + 1;
+        let defense_start = attack_start + 3;
         for (ca, cd) in self.cards.iter() {
-            write!(f, "{}{}", cursor::Goto(card_offset, table_start), ca)?;
+            ca.draw(out, cursor::Goto(card_offset, attack_start))?;
             if let Some(c) = cd {
-                write!(f, "{}{}",
-                       cursor::Goto(card_offset + 1, table_start + 3), c)?;
+                c.draw(out, cursor::Goto(card_offset + 1, defense_start))?;
             }
             card_offset += CARD_WIDTH + 2;
         }
-        Ok(())
+        write!(out, "{}{}",
+               cursor::Goto(pos.0, defense_start + CARD_HEIGHT + 1),
+               SEPARATOR)
     }
 }
 
-impl fmt::Display for Deck {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl<W: io::Write> Draw<W> for Deck {
+    fn draw(&self, out: &mut input::MouseTerminal<W>, pos: cursor::Goto) -> io::Result<()> {
         if let Some(ref trump_card) = self.trump_card() {
-            empty_card(f, self.cards.len() - 1)?;
-            write!(f, "{}", trump_card)
+            empty_card(out, self.cards.len() - 1)?;
+            trump_card.draw(out, cursor::Goto(pos.0 + CARD_WIDTH + 1, pos.1))
         } else {
-            write!(f, "No cards in the deck, time to win!")
+            write!(out, "No cards in the deck, time to win!")
         }
+    }
+}
+
+
+impl<W: io::Write> Draw<W> for Hand {
+    fn draw(&self, out: &mut input::MouseTerminal<W>, pos: cursor::Goto) -> io::Result<()> {
+        let mut i = 0;
+        for card in self.cards.iter() {
+            card.draw(out, cursor::Goto(pos.0 + (CARD_WIDTH + 1) * i, pos.1))?;
+            i += 1;
+        }
+        Ok(())
     }
 }
 
@@ -202,33 +221,26 @@ impl fmt::Display for Suit {
     }
 }
 
-impl fmt::Display for Card {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "╔═════╗{}{}",
+
+impl<W: io::Write> Draw<W> for Card {
+    fn draw(&self, out: &mut input::MouseTerminal<W>, pos: cursor::Goto) -> io::Result<()> {
+        write!(out, "{}╔═════╗{}{}",
+               pos,
                cursor::Down(1),
                cursor::Left(CARD_WIDTH))?;
-        write!(f, "║{:2}   ║{}{}",
+        write!(out, "║{:2}   ║{}{}",
                self.value.to_string(),
                cursor::Down(1),
                cursor::Left(CARD_WIDTH))?;
-        write!(f, "║  {}  ║{}{}",
+        write!(out, "║  {}  ║{}{}",
                self.suit.to_string(),
                cursor::Down(1),
                cursor::Left(CARD_WIDTH))?;
-        write!(f, "║   {:>2}║{}{}",
+        write!(out, "║   {:>2}║{}{}",
                self.value.to_string(),
                cursor::Down(1),
                cursor::Left(CARD_WIDTH))?;
-        write!(f, "╚═════╝{}",
+        write!(out, "╚═════╝{}",
                cursor::Up(CARD_HEIGHT - 1))
-    }
-}
-
-impl fmt::Display for Hand {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        for card in self.cards.iter() {
-            write!(f, "{} ", card)?;
-        }
-        Ok(())
     }
 }
