@@ -139,7 +139,7 @@ impl<W: io::Write> Draw<W> for Game {
         self.player.draw(out,
                          cursor::Goto(START.0, START.1 + 4 * CARD_HEIGHT + 3))?;
         write!(out, "{}",
-               cursor::Goto(START.0, 5 * CARD_HEIGHT + 5))?;
+               cursor::Goto(START.0, 5 * CARD_HEIGHT + 7))?;
 
         if let Some(winner) = self.winner() {
             write!(out, "{}", winner)
@@ -187,7 +187,12 @@ impl<W: io::Write> Draw<W> for Hand {
     fn draw(&self, out: &mut input::MouseTerminal<W>, pos: cursor::Goto) -> io::Result<()> {
         let mut i = 0;
         for card in self.cards.iter() {
-            card.draw(out, cursor::Goto(pos.0 + (CARD_WIDTH + 1) * i, pos.1))?;
+            let card_offset = pos.0 + (CARD_WIDTH + 1) * i;
+            card.draw(out, cursor::Goto(card_offset, pos.1))?;
+            let c = ::std::char::from_digit((i + 1) as u32, 16).unwrap_or(' ');
+            write!(out, "{}{}",
+                   cursor::Goto(card_offset + CARD_WIDTH / 2, pos.1 + CARD_HEIGHT),
+                   c)?;
             i += 1;
         }
         Ok(())
