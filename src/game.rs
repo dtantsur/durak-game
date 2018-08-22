@@ -10,11 +10,12 @@
 
 use rand::{self, Rng};
 
-use super::ai;
+use super::ai::AI;
 use super::card::{Card, Deck, Hand, Table};
 
 #[derive(Debug)]
 pub struct Game {
+    pub ai: AI,
     pub deck: Deck,
     pub discard: Vec<Card>,
     pub player: Hand,
@@ -51,12 +52,13 @@ pub enum Response {
 }
 
 impl Game {
-    pub fn new() -> Game {
+    pub fn new(ai: AI) -> Game {
         let mut rng = rand::thread_rng();
         let mut deck = Deck::new(&mut rng);
         let player = Hand::new(&mut deck);
         let computer = Hand::new(&mut deck);
         Game {
+            ai: ai,
             deck: deck,
             discard: Vec::new(),
             player: player,
@@ -113,7 +115,7 @@ impl Game {
 
     /// Start computer attack.
     fn start_attack(&mut self) -> Response {
-        let attack = ai::plan_attack(self)
+        let attack = self.ai.plan_attack(self)
             .expect("Attack impossible on first move");
         self.computer.attack_with(attack, &mut self.table);
         Response::Play(attack)
@@ -125,7 +127,7 @@ impl Game {
         assert!(!self.table.is_full());
 
         self.player.attack_with(attack, &mut self.table);
-        let response = match ai::plan_defense(self, attack) {
+        let response = match self.ai.plan_defense(self) {
             Some(response) => {
                 self.computer.defend_with(response, &mut self.table);
                 Response::Play(response)
@@ -192,7 +194,7 @@ impl Game {
             if let Some(winner) = self.winner() {
                 Response::GameOver(winner)
             } else {
-                if let Some(attack) = ai::plan_attack(self) {
+                if let Some(attack) = self.ai.plan_attack(self) {
                     self.computer.attack_with(attack, &mut self.table);
                     Response::Play(attack)
                 } else {

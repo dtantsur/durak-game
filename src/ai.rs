@@ -11,13 +11,19 @@
 use super::card::Card;
 use super::game::Game;
 
+#[derive(Debug)]
+pub struct AI;
 
-pub fn plan_attack(game: &mut Game) -> Option<Card> {
-    game.computer.acceptable_moves(&game.table, game.deck.trump)
-        .into_iter().next()
-}
+impl AI {
+    pub fn new() -> AI { AI }
 
-pub fn plan_defense(game: &mut Game, attack: Card) -> Option<Card> {
-    game.computer.acceptable_moves(&game.table, game.deck.trump)
-        .into_iter().next()
+    pub fn plan_attack(&self, game: &Game) -> Option<Card> {
+        game.computer.acceptable_moves(&game.table, game.deck.trump)
+            .into_iter().next()
+    }
+
+    pub fn plan_defense(&self, game: &Game) -> Option<Card> {
+        game.computer.acceptable_moves(&game.table, game.deck.trump)
+            .into_iter().next()
+    }
 }

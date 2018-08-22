@@ -63,7 +63,7 @@ fn main() {
     let stdin = io::stdin();
     let stdout = io::stdout().into_raw_mode()
         .expect("Cannot move stdout to raw mode");
-    let g = game::Game::new();
+    let g = game::Game::new(ai::AI::new());
     let mut u = ui::Ui::new(g, stdin, stdout);
     u.start().expect("Game crashed");
 }
