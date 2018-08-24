@@ -19,17 +19,31 @@ use super::card::{Card, Deck, Hand, Suit, Table, Value};
 use super::game::{Action, Game, Winner};
 
 
+#[derive(Debug, Clone)]
+pub struct Options {
+    pub cheat_disclose_enemy: bool,
+}
+
 pub struct Ui<R, W: io::Write> {
     game: Game,
     stdin: input::Events<R>,
     stdout: input::MouseTerminal<W>,
+    options: Options,
 }
 
 trait Draw<W: io::Write> {
-    fn draw(&self, out: &mut input::MouseTerminal<W>, pos: cursor::Goto)
+    fn draw(&self, out: &mut input::MouseTerminal<W>, pos: cursor::Goto,
+            options: &Options)
         -> io::Result<()>;
 }
 
+impl Options {
+    pub fn new() -> Options {
+        Options {
+            cheat_disclose_enemy: false,
+        }
+    }
+}
 
 const START: cursor::Goto = cursor::Goto(1, 2);
 
@@ -39,6 +53,7 @@ impl<R: io::Read, W: io::Write> Ui<R, W> {
             game: game,
             stdin: stdin.events(),
             stdout: stdout.into(),
+            options: Options::new(),
         }
     }
 
@@ -55,6 +70,8 @@ impl<R: io::Read, W: io::Write> Ui<R, W> {
                     self.process_card(c.to_digit(16).unwrap() as usize),
                 Event::Key(Key::Char(' ')) => self.process_end_turn(),
                 Event::Key(Key::Char('t')) => self.process_take(),
+                Event::Key(Key::Ctrl('r')) =>
+                    self.options.cheat_disclose_enemy = !self.options.cheat_disclose_enemy,
                 _ => ()
             }
         }
@@ -63,7 +80,7 @@ impl<R: io::Read, W: io::Write> Ui<R, W> {
     fn draw(&mut self) -> Result<(), io::Error> {
         write!(self.stdout, "{}{}Durak game, press q to exit{}",
                clear::All, cursor::Goto(1, 1), START)?;
-        self.game.draw(&mut self.stdout, START)?;
+        self.game.draw(&mut self.stdout, START, &self.options)?;
         self.stdout.flush()?;
 
         Ok(())
@@ -121,23 +138,32 @@ fn empty_card<W: io::Write, S: fmt::Display>(f: &mut input::MouseTerminal<W>, sy
 }
 
 impl<W: io::Write> Draw<W> for Game {
-    fn draw(&self, out: &mut input::MouseTerminal<W>, pos: cursor::Goto) -> io::Result<()> {
-        self.deck.draw(out, pos)?;
+    fn draw(&self, out: &mut input::MouseTerminal<W>, pos: cursor::Goto,
+            options: &Options) -> io::Result<()> {
+        self.deck.draw(out, pos, options)?;
         write!(out, "{}", cursor::Goto(START.0 + 40, START.1))?;
         empty_card(out, self.discard.len())?;
         write!(out, "{}Computer:{}",
                cursor::Goto(START.0, START.1 + CARD_HEIGHT),
                cursor::Goto(START.0, START.1 + CARD_HEIGHT + 1))?;
-        for _ in 0 .. self.computer.cards.len() {
-            empty_card(out, "?")?;
-            write!(out, " ")?;
+        if options.cheat_disclose_enemy {
+            self.computer.draw(out,
+                               cursor::Goto(START.0, START.1 + CARD_HEIGHT + 1),
+                               options)?;
+        } else {
+            for _ in 0 .. self.computer.cards.len() {
+                empty_card(out, "?")?;
+                write!(out, " ")?;
+            }
         }
         self.table.draw(out,
-                        cursor::Goto(START.0, START.1 + 2 * CARD_HEIGHT + 1))?;
+                        cursor::Goto(START.0, START.1 + 2 * CARD_HEIGHT + 1),
+                        options)?;
         write!(out, "{}Your cards: ",
                cursor::Goto(START.0, START.1 + 4 * CARD_HEIGHT + 2))?;
         self.player.draw(out,
-                         cursor::Goto(START.0, START.1 + 4 * CARD_HEIGHT + 3))?;
+                         cursor::Goto(START.0, START.1 + 4 * CARD_HEIGHT + 3),
+                         options)?;
         write!(out, "{}",
                cursor::Goto(START.0, 5 * CARD_HEIGHT + 7))?;
 
@@ -153,15 +179,17 @@ impl<W: io::Write> Draw<W> for Game {
 
 
 impl<W: io::Write> Draw<W> for Table {
-    fn draw(&self, out: &mut input::MouseTerminal<W>, pos: cursor::Goto) -> io::Result<()> {
+    fn draw(&self, out: &mut input::MouseTerminal<W>, pos: cursor::Goto,
+            options: &Options) -> io::Result<()> {
         write!(out, "{}{}", pos, SEPARATOR)?;
         let mut card_offset = pos.0;
         let attack_start = pos.1 + 1;
         let defense_start = attack_start + 3;
         for (ca, cd) in self.cards.iter() {
-            ca.draw(out, cursor::Goto(card_offset, attack_start))?;
+            ca.draw(out, cursor::Goto(card_offset, attack_start), options)?;
             if let Some(c) = cd {
-                c.draw(out, cursor::Goto(card_offset + 1, defense_start))?;
+                c.draw(out, cursor::Goto(card_offset + 1, defense_start),
+                       options)?;
             }
             card_offset += CARD_WIDTH + 2;
         }
@@ -172,10 +200,12 @@ impl<W: io::Write> Draw<W> for Table {
 }
 
 impl<W: io::Write> Draw<W> for Deck {
-    fn draw(&self, out: &mut input::MouseTerminal<W>, pos: cursor::Goto) -> io::Result<()> {
+    fn draw(&self, out: &mut input::MouseTerminal<W>, pos: cursor::Goto,
+            options: &Options) -> io::Result<()> {
         if let Some(ref trump_card) = self.trump_card() {
             empty_card(out, self.cards.len() - 1)?;
-            trump_card.draw(out, cursor::Goto(pos.0 + CARD_WIDTH + 1, pos.1))
+            trump_card.draw(out, cursor::Goto(pos.0 + CARD_WIDTH + 1, pos.1),
+                            options)
         } else {
             write!(out, "No cards in the deck, time to win!")
         }
@@ -184,11 +214,12 @@ impl<W: io::Write> Draw<W> for Deck {
 
 
 impl<W: io::Write> Draw<W> for Hand {
-    fn draw(&self, out: &mut input::MouseTerminal<W>, pos: cursor::Goto) -> io::Result<()> {
+    fn draw(&self, out: &mut input::MouseTerminal<W>, pos: cursor::Goto,
+            options: &Options) -> io::Result<()> {
         let mut i = 0;
         for card in self.cards.iter() {
             let card_offset = pos.0 + (CARD_WIDTH + 1) * i;
-            card.draw(out, cursor::Goto(card_offset, pos.1))?;
+            card.draw(out, cursor::Goto(card_offset, pos.1), options)?;
             let c = ::std::char::from_digit((i + 1) as u32, 16).unwrap_or(' ');
             write!(out, "{}{}",
                    cursor::Goto(card_offset + CARD_WIDTH / 2, pos.1 + CARD_HEIGHT),
@@ -229,7 +260,8 @@ impl fmt::Display for Suit {
 }
 
 impl<W: io::Write> Draw<W> for Card {
-    fn draw(&self, out: &mut input::MouseTerminal<W>, pos: cursor::Goto) -> io::Result<()> {
+    fn draw(&self, out: &mut input::MouseTerminal<W>, pos: cursor::Goto,
+            _options: &Options) -> io::Result<()> {
         write!(out, "{}╔═════╗{}{}",
                pos,
                cursor::Down(1),
